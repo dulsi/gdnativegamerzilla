@@ -1,0 +1,122 @@
+GDNativeGamerzilla
+
+GDNativeGamerzilla is a godot native plugin to support Gamerzilla, an
+open source game achievement system.
+
+HOW TO BUILD
+
+First you need a libgamerzilla installed. With Fedora you can install it
+with:
+
+dnf install libgamerzilla-devel
+
+You will need to clone the godot-cpp repository along with it's
+submodules. This needs to be cloned at the same level as this
+repository. Commands to grab both are:
+
+git clone --recursive https://github.com/GodotNativeTools/godot-cpp
+git clone https://github.com/dulsi/gdnativegamerzilla.git
+
+This git repo may be more recent than your version of godot. It may work
+with your version but if you want you can generate the api for the
+specific version you have. The command to do that is:
+
+godot --gdnative-generate-json-api api.json
+
+Compiling the godot-cpp interface is done with SCons. The command is:
+
+cd godot-cpp
+scons platform=<platform> generate_bindings=yes -j4
+
+<platform> can be linux or windows
+
+If you have generated a version of api.json. You can add the following
+to the SCons command to use that file:
+
+use_custom_api_file=yes custom_api_file=../api.json
+
+To compile GDNativeGamerzilla you run the following:
+
+cd ../gdnativegamerzilla
+scons platform=<platform>
+
+This will generate a library in the bin directory. The library will need
+to be copied into your godot project.
+
+HOW TO USE
+
+In your godot project, you need to create a directory and copy the
+GDNativeGamerzilla library.
+
+mkdir gdnative
+mkdir gdnative/<platform>
+cp ../gdnativegamerzilla/bin/* gdnative/<platform>/
+
+Load the project in godot. Right click in the resource dialog and create
+a new resource. Search for GDNativeLibrary. In the bottom contextual
+panel at the bottom you will see where you can specify the library to
+load for each platform.
+
+After that is setup, create another new resource. Search for
+NativeScript. Set the library to the GDNativeLibrary you just added. For
+class name enter Gamerzilla.
+
+Before you can award achievements to players, you need to define the
+achievements. Typically you specify the achievements in a json file.
+
+{
+	"shortname": "test",
+	"name": "Test Game",
+	"image": "res://gamerzilla/test.png.res",
+	"version": "1",
+	"trophy": [
+		{
+			"trophy_name": "Winner", 
+			"trophy_desc": "Win the game", 
+			"max_progress": "0",
+			"trueimage": "res://gamerzilla/true.png.res",
+			"falseimage": "res://gamerzilla/false.png.res"
+		},
+		{
+			"trophy_name": "Dragon Slayer",
+			"trophy_desc": "Kill five dragons",
+			"max_progress": "5", 
+			"trueimage": "res://gamerzilla/true.png.res",
+			"falseimage": "res://gamerzilla/false.png.res"
+		}
+	]
+}
+
+This example places all gamerzilla files in a subdirectory. You don't
+need to do this. The file itself would be call test.game.tres. Godot
+automatically converts png files to a different format for loading. The
+files have been renamed to add .res as the file extension to prevent
+this conversion.
+
+In your project you need to load the NativeScript resource. Since not
+all platforms support Gamerzilla, it is best to check if the script
+loaded properly before calling it.
+
+var gzilla = preload("res://gdgamerzillascript.gdns").new()
+if (gzilla):
+	print(gzilla.start(false, OS.get_user_data_dir()))
+	gzilla.setGameFromFile("res://gamerzilla/test.game.tres", "")
+
+For giving an achievement you call the SetTrophy method.
+
+if (gzilla):
+	gzilla.setTrophy("Survive 10")
+
+If you want to set progress on an achievement there are functions to get
+and set the current progress.
+
+if (gzilla):
+	var count = gzilla.getTrophyStat("Dragon Slayer")
+	gzilla.setTrophyStat("Dragon Slayer", count + 1)
+
+If the player has achieved the maximum progress, the achievement is
+automatically awarded.
+
+When you distribute the game, you need to include the libgamerzilla
+library with it in the same location as specified in the
+GDNativeLibrary.
