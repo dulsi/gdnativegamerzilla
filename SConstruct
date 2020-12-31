@@ -1,67 +1,95 @@
 #!python
-import os
+import os, subprocess
 
-# platform= makes it in line with Godots scons file, keeping p for backwards compatibility
-platform = ARGUMENTS.get("p", "linux")
-platform = ARGUMENTS.get("platform", platform)
+opts = Variables([], ARGUMENTS)
 
-# This makes sure to keep the session environment variables on windows,
-# that way you can run scons in a vs 2017 prompt and it will find all the required tools
-env = Environment()
-if platform == "windows":
-    env = Environment(ENV=os.environ)
+# Gets the standard flags CC, CCX, etc.
+env = DefaultEnvironment()
 
-godot_headers_path = ARGUMENTS.get("headers", os.getenv("GODOT_HEADERS", "../godot-cpp/godot_headers"))
-godot_bindings_path = ARGUMENTS.get("cpp_bindings", os.getenv("CPP_BINDINGS", "../godot-cpp"))
+# Define our options
+opts.Add(EnumVariable('target', "Compilation target", 'debug', ['d', 'debug', 'r', 'release']))
+opts.Add(EnumVariable('platform', "Compilation platform", '', ['', 'windows', 'x11', 'linux', 'osx']))
+opts.Add(EnumVariable('p', "Compilation target, alias for 'platform'", '', ['', 'windows', 'x11', 'linux', 'osx']))
+opts.Add(BoolVariable('use_llvm', "Use the LLVM / Clang compiler", 'no'))
+opts.Add(PathVariable('target_path', 'The path where the lib is installed.', 'bin/'))
+opts.Add(PathVariable('target_name', 'The library name.', 'libgdgamerzilla', PathVariable.PathAccept))
 
-# default to debug build, must be same setting as used for cpp_bindings
-target = ARGUMENTS.get("target", "debug")
+# Local dependency paths, adapt them to your setup
+godot_headers_path = "../godot-cpp/godot_headers/"
+cpp_bindings_path = "../godot-cpp/"
+cpp_library = "libgodot-cpp"
 
+# only support 64 at this time..
+bits = 64
 
-if ARGUMENTS.get("use_llvm", "no") == "yes":
-    env["CXX"] = "clang++"
+# Updates the environment with the option variables.
+opts.Update(env)
 
-# put stuff that is the same for all first, saves duplication
-if platform == "osx":
-    env.Append(CCFLAGS=["-g", "-O3", "-std=c++14", "-arch", "x86_64"])
-    env.Append(LINKFLAGS=["-arch", "x86_64", "-framework", "Cocoa", "-Wl,-undefined,dynamic_lookup"])
-elif platform == "linux":
-    env.Append(CCFLAGS=["-g", "-O3", "-std=c++14", "-Wno-writable-strings"])
-    env.Append(LINKFLAGS=["-Wl,-R,'$$ORIGIN'"])
-elif platform == "windows":
-    # need to add detection of msvc vs mingw, this is for msvc...
-    env.Append(LINKFLAGS=["/WX"])
-    if target == "debug":
-        env.Append(CCFLAGS=["-EHsc", "-D_DEBUG", "/MDd"])
+# Process some arguments
+if env['use_llvm']:
+    env['CC'] = 'clang'
+    env['CXX'] = 'clang++'
+
+if env['p'] != '':
+    env['platform'] = env['p']
+
+if env['platform'] == '':
+    print("No valid target platform selected.")
+    quit();
+
+# Check our platform specifics
+if env['platform'] == "osx":
+    env['target_path'] += 'osx/'
+    cpp_library += '.osx'
+    if env['target'] in ('debug', 'd'):
+        env.Append(CCFLAGS = ['-g','-O2', '-arch', 'x86_64', '-std=c++17'])
+        env.Append(LINKFLAGS = ['-arch', 'x86_64'])
     else:
-        env.Append(CCFLAGS=["-O2", "-EHsc", "-DNDEBUG", "/MD"])
+        env.Append(CCFLAGS = ['-g','-O3', '-arch', 'x86_64', '-std=c++17'])
+        env.Append(LINKFLAGS = ['-arch', 'x86_64'])
 
+elif env['platform'] in ('x11', 'linux'):
+    env['target_path'] += 'x11/'
+    cpp_library += '.linux'
+    if env['target'] in ('debug', 'd'):
+        env.Append(CCFLAGS = ['-fPIC', '-g3','-Og', '-std=c++17'])
+    else:
+        env.Append(CCFLAGS = ['-fPIC', '-g','-O3', '-std=c++17'])
 
-def add_sources(sources, dir):
-    for f in os.listdir(dir):
-        if f.endswith(".cpp"):
-            sources.append(dir + "/" + f)
+elif env['platform'] == "windows":
+    env['target_path'] += 'win64/'
+    cpp_library += '.windows'
+    # This makes sure to keep the session environment variables on windows,
+    # that way you can run scons in a vs 2017 prompt and it will find all the required tools
+    env.Append(ENV = os.environ)
 
+    env.Append(CCFLAGS = ['-DWIN32', '-D_WIN32', '-D_WINDOWS', '-W3', '-GR', '-D_CRT_SECURE_NO_WARNINGS'])
+    if env['target'] in ('debug', 'd'):
+        env.Append(CCFLAGS = ['-EHsc', '-D_DEBUG', '-MDd'])
+    else:
+        env.Append(CCFLAGS = ['-O2', '-EHsc', '-DNDEBUG', '-MD'])
 
-env.Append(
-    CPPPATH=[
-        godot_headers_path,
-        godot_bindings_path + "/include",
-        godot_bindings_path + "/include/gen/",
-        godot_bindings_path + "/include/core/",
-    ]
-)
+if env['target'] in ('debug', 'd'):
+    cpp_library += '.debug'
+else:
+    cpp_library += '.release'
+
+cpp_library += '.' + str(bits)
 
 env.ParseConfig("pkg-config gamerzilla --cflags --libs")
 
-if target == "debug":
-    env.Append(LIBS=["libgodot-cpp.linux.debug.64"])
-else:
-    env.Append(LIBS=["libgodot-cpp.linux.release.64"])
-env.Append(LIBPATH=[godot_bindings_path + "/bin/"])
+# make sure our binding library is properly includes
+env.Append(CPPPATH=['.', godot_headers_path, cpp_bindings_path + 'include/', cpp_bindings_path + 'include/core/', cpp_bindings_path + 'include/gen/'])
+env.Append(LIBPATH=[cpp_bindings_path + 'bin/'])
+env.Append(LIBS=[cpp_library])
 
-sources = []
-add_sources(sources, ".")
+# tweak this if you want to use different folders, or more folders, to store your source code in.
+env.Append(CPPPATH=['./'])
+sources = Glob('./*.cpp')
 
-library = env.SharedLibrary(target="bin/libgdgamerzilla", source=sources)
+library = env.SharedLibrary(target=env['target_path'] + env['target_name'] , source=sources)
+
 Default(library)
+
+# Generates help for the -h scons option.
+Help(opts.GenerateHelpText(env))
