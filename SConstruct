@@ -13,17 +13,21 @@ opts.Add(EnumVariable('p', "Compilation target, alias for 'platform'", '', ['', 
 opts.Add(BoolVariable('use_llvm', "Use the LLVM / Clang compiler", 'no'))
 opts.Add(PathVariable('target_path', 'The path where the lib is installed.', 'bin/'))
 opts.Add(PathVariable('target_name', 'The library name.', 'libgdgamerzilla', PathVariable.PathAccept))
-
-# Local dependency paths, adapt them to your setup
-godot_headers_path = "../godot-cpp/godot-headers/"
-cpp_bindings_path = "../godot-cpp/"
-cpp_library = "libgodot-cpp"
+opts.Add(PathVariable('godot_headers_path', 'The path where the godot headers are installed.', '../godot-cpp/godot-headers/'))
+opts.Add(PathVariable('cpp_bindings_path', 'The path where the cpp binding headers are installed.', '../godot-cpp/'))
+opts.Add(PathVariable('cpp_libs_path', 'The path where the cpp lib is installed.', '../godot-cpp/'))
 
 # only support 64 at this time..
 bits = 64
 
 # Updates the environment with the option variables.
 opts.Update(env)
+
+# Local dependency paths, adapt them to your setup
+godot_headers_path = env["godot_headers_path"]
+cpp_bindings_path = env["cpp_bindings_path"]
+cpp_libs_path = env["cpp_libs_path"]
+cpp_library = "libgodot-cpp"
 
 # Process some arguments
 if env['use_llvm']:
@@ -81,7 +85,7 @@ env.ParseConfig("pkg-config gamerzilla --cflags --libs")
 
 # make sure our binding library is properly includes
 env.Append(CPPPATH=['.', godot_headers_path, cpp_bindings_path + 'include/', cpp_bindings_path + 'include/core/', cpp_bindings_path + 'include/gen/'])
-env.Append(LIBPATH=[cpp_bindings_path + 'bin/'])
+env.Append(LIBPATH=[cpp_libs_path + 'bin/'])
 env.Append(LIBS=[cpp_library])
 
 # tweak this if you want to use different folders, or more folders, to store your source code in.

@@ -4,6 +4,7 @@
 #include "File.hpp"
 
 #include <gamerzilla.h>
+#include <string>
 
 using namespace godot;
 
